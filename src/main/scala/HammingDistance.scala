@@ -11,27 +11,39 @@ object HammingDistance {
     val sc = new SparkContext(conf)
 
     val descriptorsFile = "/home/bill/projects/image-feature-search/indexes/full_index"
-    val namesFile = "/home/bill/projects/image-feature-search/indexes/names"
+    val valuesFile = "/home/bill/projects/image-feature-search/indexes/values"
 
     val descriptors = sc.binaryRecords(descriptorsFile, 32)
-    val names = sc.textFile(namesFile)
+    val values = sc.textFile(valuesFile).collect.map(_.split(","))
+
+    val names = values.map(_(0)).toList
+    val lastIndexes = values.map(_(1).toInt).toList
+    val ranges = Partitioned(lastIndexes)
+    val getItemNum = Partitioned.getItemNum(ranges)(_)
+    def getName(i: Int): String = names(getItemNum(i).get)
 
     val search = new LinearSearch()
 
-    search.train(descriptors, names)
+    search.train(descriptors)
 
-    val queryDescriptorsFile = "/home/bill/projects/image-feature-search/indexes/query_index"
+    val queryDescriptorsFile = "/home/bill/projects/image-feature-search/indexes/query_descriptors"
 
     val queryDescriptors = sc.binaryRecords(queryDescriptorsFile, 32)
 
-    val results = search.joinKnn(2)(queryDescriptors)
-    println(results.mkString("\n"))
+    val indexResults: Array[Array[(Long, Int)]] = search.joinKnn(1)(queryDescriptors)
+
+    val matches: Array[(String, Int)] =
+      indexResults.map(_.head).map { case (i, d) => (getName(i.toInt), d) }
+
+    val correctMatches = matches.filter(m => m._1 == "frame003.jpg" || m._1 == "frame004.jpg")
+
+    val correctDistances = correctMatches.map(_._2)
+
+    println(correctDistances.sum / correctDistances.length)
 
 //    def encode(n: BigInt): BigInt = n ^ (n >> 1)
 //
 //    val grayCodes: RDD[BigInt] = descriptors.map(bytes => encode(BigInt(bytes)))
-//
-//    println("grayCodes", grayCodes.count())
 //
 //    val sortedDescriptors: RDD[Array[Byte]] =
 //      descriptors.zip(grayCodes).sortBy(el => el._2).keys
