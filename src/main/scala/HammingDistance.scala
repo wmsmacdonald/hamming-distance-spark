@@ -1,3 +1,7 @@
+import java.math.BigInteger
+import java.nio.file.Files
+import java.util.Random
+
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
 import org.apache.spark.SparkConf
@@ -7,50 +11,46 @@ import org.apache.spark.rdd.RDD
 object HammingDistance {
 
   def main(args: Array[String]) {
-    val conf = new SparkConf().setAppName("HammingDistance").setMaster("local[8]")
-    val sc = new SparkContext(conf)
 
-    val descriptorsFile = "/home/bill/projects/image-feature-search/indexes/full_index"
-    val valuesFile = "/home/bill/projects/image-feature-search/indexes/values"
+    def bigIntegerLRS(n: BigInt, amount: Int): BigInt = {
+      if (n >= 0) {
+        n >> amount
+      }
+      else {
+        // unset sign bit
+        BigInt("0" + (n >> amount).toString(2).drop(1), 2)
+      }
+    }
 
-    val descriptors = sc.binaryRecords(descriptorsFile, 32)
-    val values = sc.textFile(valuesFile).collect.map(_.split(","))
+    def leftPad(n: Int)(bytes: Array[Byte]): Array[Byte] = {
+      Array.fill[Byte](n - bytes.length)(0.toByte) ++ bytes
+    }
 
-    val names = values.map(_(0)).toList
-    val lastIndexes = values.map(_(1).toInt).toList
-    val ranges = Partitioned(lastIndexes)
-    val getItemNum = Partitioned.getItemNum(ranges)(_)
-    def getName(i: Int): String = names(getItemNum(i).get)
 
-    val search = new LinearSearch()
+    def encode(n: BigInt): BigInt =  n ^ bigIntegerLRS(n, 1)
 
-    search.train(descriptors)
+    val ts = Array("000001001010", "000001011101", "000011001100", "000101001010",
+    "000101110110", "000101011101", "000101101010", "000111001100").map(BigInt(_, 2))
 
-    val queryDescriptorsFile = "/home/bill/projects/image-feature-search/indexes/query_descriptors"
+    val (_, grayOrdered) = ts.map(encode).zip(ts).sortBy(x => x._1).unzip
 
-    val queryDescriptors = sc.binaryRecords(queryDescriptorsFile, 32)
+    val sequences = grayOrdered.map(_.toByteArray).map(leftPad(4)(_))
 
-    val indexResults: Array[Array[(Long, Int)]] = search.joinKnn(1)(queryDescriptors)
 
-    val matches: Array[(String, Int)] =
-      indexResults.map(_.head).map { case (i, d) => (getName(i.toInt), d) }
+    val fLSSeqs = sequences.map(FLSSeq(_))
 
-    val correctMatches = matches.filter(m => m._1 == "frame003.jpg" || m._1 == "frame004.jpg")
+    DynamicHAIndex.build(fLSSeqs, 2)
+    /*
+    val vectors = Array(Array())
 
-    val correctDistances = correctMatches.map(_._2)
+    val grayCodes: RDD[BigInt] = descriptors.map(bytes => encode(BigInt(bytes)))
 
-    println(correctDistances.sum / correctDistances.length)
+    val sortedDescriptors: RDD[Array[Byte]] =
+      descriptors.zip(grayCodes).sortBy(el => el._2).keys
 
-//    def encode(n: BigInt): BigInt = n ^ (n >> 1)
-//
-//    val grayCodes: RDD[BigInt] = descriptors.map(bytes => encode(BigInt(bytes)))
-//
-//    val sortedDescriptors: RDD[Array[Byte]] =
-//      descriptors.zip(grayCodes).sortBy(el => el._2).keys
-//
-//    val strings: RDD[String] = sortedDescriptors.map(a => BigInt(a).toString(2))
+    val strings: RDD[String] = sortedDescriptors.map(a => BigInt(a).toString(2))
+    */
 
-    sc.stop()
   }
 
 }
