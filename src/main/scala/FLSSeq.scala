@@ -21,28 +21,31 @@ object FLSSeq {
       FLSSeq(sequence, mask)
     }
   }
-
-  def opposite(original: FLSSeq, other: FLSSeq): FLSSeq = {
-    val mask = other.mask.map(m => (~m).toByte)
-    FLSSeq(original.sequence, mask)
-  }
-
-  def distance(fLSSeq1: FLSSeq, fLSSeq2: FLSSeq): Int =
-    fLSSeq1.sequence.zip(fLSSeq2.sequence).map(tupled(_ ^ _)).zip(fLSSeq1.mask)
-      .map(tupled(_ & _)).zip(fLSSeq2.mask).map(tupled(_ & _)).map(Integer.bitCount).sum
 }
 
 case class FLSSeq(sequence: Array[Byte],
                   mask: Array[Byte] = Array.fill(32)(0.toByte)) {
 
-  def equals(other: FLSSeq): Boolean = {
-    this.mask.deep == other.mask.deep && FLSSeq.distance(this, other) == 0
-  }
+  def equals(other: FLSSeq): Boolean =
+    this.mask.deep == other.mask.deep && this.distance(other) == 0
+
+  override def hashCode(): Int =
+    (BigInt(this.sequence) + BigInt(this.mask)).intValue().hashCode()
+
 
   def isEmpty: Boolean = mask.map((b: Byte) => Integer.bitCount(b)).sum == 0
 
+  def opposite(other: FLSSeq): FLSSeq = {
+    val mask = other.mask.map(m => (~m).toByte)
+    FLSSeq(this.sequence, mask)
+  }
+
+  def distance(other: FLSSeq): Int =
+    this.sequence.zip(other.sequence).map(tupled(_ ^ _)).zip(this.mask)
+      .map(tupled(_ & _)).zip(other.mask).map(tupled(_ & _)).map(Integer.bitCount).sum
+
   override def toString: String =
-    s"FLSSeq(sequence: [${sequence.mkString(",")}], mask: [${mask.mkString(",")}])"
+    s"FLSSeq(seq: ${BigInt(sequence).toString(2)}, mask: ${BigInt(mask).toString(2)})"
 }
 
 

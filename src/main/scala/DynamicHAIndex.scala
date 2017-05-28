@@ -1,32 +1,49 @@
-import scala.collection.mutable.Queue
+import collection.mutable.{Queue, HashMap, MutableList}
 
-case class Node[T](children: List[Node[T]], value: T)
+case class IndexNode(fLSSeq: FLSSeq, children: MutableList[IndexNode],
+                     value: MutableList[Int])
 
 object DynamicHAIndex {
   def build(vectors: Array[FLSSeq], windowSize: Int): DynamicHAIndex = {
-    val q = new Queue()
-    val existingNodes = collection.mutable.Set[FLSSeq]()
-    var root = Node(List(), None)
+    val windows = vectors.zipWithIndex.sliding(windowSize, windowSize)
+    val fLSSeqToIndexNode = new HashMap[FLSSeq, IndexNode]
 
-    for (i <- vectors.indices) {
-      val parentFLSSeq = FLSSeq.extract(vectors.slice(i, i + windowSize))
-      val childFLSSeq = FLSSeq.opposite(vectors(i), parentFLSSeq)
-      println(parentFLSSeq)
-      println(childFLSSeq)
+    val level: MutableList[IndexNode] = MutableList()
 
-      val child = Node(List(), childFLSSeq)
-      val parent = Node(List(child), parentFLSSeq)
+    windows.foreach(window => {
+      val (fLSSeqs, indexes): (Array[FLSSeq], Array[Int]) = window.unzip
 
-      if (!existingNodes.contains(childFLSSeq)){
+      val parentFLSSeq = FLSSeq.extract(fLSSeqs)
+      val childrenFLSSeq = fLSSeqs.map(_.opposite(parentFLSSeq))
 
+      val parent = IndexNode(parentFLSSeq, MutableList[IndexNode](), MutableList[Int]())
+
+      childrenFLSSeq.zip(indexes).foreach { case(fLSSeq, i) =>
+        if (fLSSeqToIndexNode contains fLSSeq) {
+          val matchingIndexNode: IndexNode = fLSSeqToIndexNode(fLSSeq)
+          parent.children += matchingIndexNode
+          matchingIndexNode.value += i
+          println("matching")
+        }
+        else {
+          val child = IndexNode(fLSSeq, MutableList(), MutableList(i))
+
+          if (parent.fLSSeq.isEmpty) {
+            println("no common")
+            level += child
+          }
+          else {
+            parent.children += child
+          }
+        }
       }
 
-      if (!parentFLSSeq.isEmpty) {
-        q.enqueue()
+      if (parent.children.nonEmpty) {
+        level += parent
       }
 
-    }
-    println(q.mkString(", "))
+    })
+    println(level.mkString("\n"))
     new DynamicHAIndex()
   }
 }
