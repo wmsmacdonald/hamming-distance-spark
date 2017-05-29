@@ -1,22 +1,33 @@
 import collection.mutable.MutableList
 import collection.immutable
 
-case class IndexNode(fLSSeq: FLSSeq, children: MutableList[IndexNode],
-                     value: MutableList[Int])
-
-case class Level(nodes: List[IndexNode],
-                 fLSSeqToIndexNode: immutable.HashMap[FLSSeq, IndexNode])
+case class IndexNode(fLSSeq: FLSSeq, children: MutableList[IndexNode], value: Option[Any])
 
 object DynamicHAIndex {
-
-  def apply(vectors: List[Array[Byte]], windowSize: Int, depth: Int): List[IndexNode] = {
-
-    val (sortedVectors, indexes) = DynamicHAIndex.grayOrder(vectors).unzip
-    build(sortedVectors, indexes, windowSize, depth)
+  def knn(nodes: List[IndexNode], threshold: Int, k: Int, vector: Array[Byte]): List[(Any, Int)] = {
+    val fLSSeq = FLSSeq.full(vector)
+    val resultNodes: List[IndexNode] = search(nodes, threshold, fLSSeq)
+    println(resultNodes.length)
+    val leafNodes = resultNodes.filter(n => n.value.isDefined)
+    val distances = leafNodes.map(_.fLSSeq.distance(fLSSeq))
+    leafNodes.zip(distances).sortBy(_._2).take(k).map {
+      case (n, d) => (n.value.get, d)
+    }
   }
 
+  def search(nodes: List[IndexNode], threshold: Int, vector: FLSSeq): List[IndexNode] = {
+    if (nodes.isEmpty) {
+      List()
+    }
+    else {
+      val closeNodes = nodes.filter(n => n.fLSSeq.distance(vector) <= threshold)
+      closeNodes ++ closeNodes.flatMap(n => search(n.children.toList, threshold, vector))
+    }
+  }
 
-  def grayOrder(vectors: List[Array[Byte]]): List[(Array[Byte], Int)] = {
+  def apply(vectors: List[Array[Byte]], values: List[Any],
+            windowFraction: Double, depth: Int): List[IndexNode] = {
+
     def bigIntegerLRS(n: BigInt, amount: Int): BigInt = {
       if (n >= 0) {
         n >> amount
@@ -35,78 +46,57 @@ object DynamicHAIndex {
 
     val encoded = vectors.map(BigInt(_)).map(encode)
 
-    val sorted = encoded.zip(vectors.zipWithIndex).sortBy(x => x._1).unzip
-    sorted._2
+    val (sortedVectors, sortedValues) =
+      encoded.zip(vectors.zip(values)).sortBy(x => x._1).unzip._2.unzip
+
+    build(sortedVectors, sortedValues, windowFraction, depth)
   }
+
 
   def build(vectors: List[Array[Byte]],
-            indexes: List[Int],
-            windowSize: Int,
+            values: List[Any],
+            windowFraction: Double,
             depth: Int): List[IndexNode] = {
 
-    val fLSSeqs = vectors.map(seq => FLSSeq(seq, Array.fill[Byte](seq.length)(-1)))
-    val nodes = fLSSeqs.zip(indexes).map { case (fLSSeq, i) =>
-      IndexNode(fLSSeq, MutableList(), MutableList(i))
+    val fLSSeqs = vectors.map(seq => FLSSeq.full(seq))
+    val nodes = fLSSeqs.zip(values).map { case (fLSSeq, v) =>
+      IndexNode(fLSSeq, MutableList(), Some(v))
     }
-    val level = Level(nodes, immutable.HashMap[FLSSeq, IndexNode]())
-    build(level, windowSize, depth)
+    buildLevel(nodes, List(), windowFraction, depth)
   }
 
 
-  def build(level: Level, windowSize: Int, depth: Int): List[IndexNode] = {
+  def buildLevel(nodes: List[IndexNode], level: List[IndexNode],
+                 windowFraction: Double, depth: Int): List[IndexNode] = {
     if (depth == 0) {
-      level.nodes
+      nodes
     }
     else {
-      val windows: Iterator[List[IndexNode]] = level.nodes.sliding(windowSize, windowSize)
+      val windowLength = (nodes.length * windowFraction).toInt
+      val windows: List[List[IndexNode]] = nodes.sliding(windowLength, windowLength).toList
 
-      val endLevel = windows.foldLeft(level)(DynamicHAIndex.buildWindowLevel)
+      val nextNodes = windows.foldLeft(List[IndexNode]())(DynamicHAIndex.buildWindowLevel)
 
-      build(endLevel, windowSize, depth - 1)
+      buildLevel(nextNodes, List(), windowFraction, depth - 1)
     }
   }
 
-  def buildWindowLevel(level: Level, nodes: List[IndexNode]): Level = {
-    val fLSSeqs = nodes.map(_.fLSSeq)
+  def buildWindowLevel(allNextLevelNodes: List[IndexNode],
+                       windowNodes: List[IndexNode]): List[IndexNode] = {
+    val fLSSeqs = windowNodes.map(_.fLSSeq)
 
     val parentFLSSeq = FLSSeq.extract(fLSSeqs)
 
-    val parentNode = IndexNode(parentFLSSeq, MutableList[IndexNode](), MutableList[Int]())
 
-    val newLevel = nodes.foldLeft(level)((level, childNode) => {
-      val childFLSSeq = childNode.fLSSeq - parentFLSSeq
-      assert(childFLSSeq.distance(parentFLSSeq) == 0)
-
-      if (level.fLSSeqToIndexNode contains childFLSSeq) {
-        val matchingIndexNode: IndexNode = level.fLSSeqToIndexNode(childFLSSeq)
-        parentNode.children += matchingIndexNode
-        matchingIndexNode.value += childNode.value.head
-        println("matching")
-        level
-      }
-      else {
-        if (parentNode.fLSSeq.isEmpty) {
-          println("no matches")
-          Level(childNode::level.nodes, level.fLSSeqToIndexNode)
-        }
-        else {
-          parentNode.children += childNode
-          level
-        }
-      }
-
-    })
-
-    if (parentNode.children.isEmpty) {
-      newLevel
+    if (parentFLSSeq.isEmpty) {
+      windowNodes ++ allNextLevelNodes
     }
     else {
-      Level(parentNode::newLevel.nodes, newLevel.fLSSeqToIndexNode)
+      val parentNode = IndexNode(parentFLSSeq, MutableList[IndexNode](windowNodes:_*),
+        None)
+      parentNode :: allNextLevelNodes
     }
   }
 }
 
 
-class DynamicHAIndex() {
-
-}

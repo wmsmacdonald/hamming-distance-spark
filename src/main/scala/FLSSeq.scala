@@ -1,6 +1,10 @@
 import Function.tupled
 
 object FLSSeq {
+
+  def full(sequence: Array[Byte]): FLSSeq =
+    FLSSeq(sequence, Array.fill[Byte](sequence.length)(-1))
+
   def extract(fLSSeqs: List[FLSSeq]): FLSSeq = {
     val sequences: List[Array[Byte]] = fLSSeqs.map(_.sequence)
     val transposed: List[List[Byte]] = sequences.transpose
@@ -14,7 +18,7 @@ object FLSSeq {
       val mask: Array[Byte] = transposed.map { seq =>
         val groups = seq.sliding(2, 1).toList
         val r = groups.map({ bytes =>
-          (bytes(0) ^ bytes(1)).toByte
+          (bytes.head ^ bytes(1)).toByte
         }).reduce((b1, b2) => (b1 | b2).toByte)
         (~r).toByte
       }.toArray
