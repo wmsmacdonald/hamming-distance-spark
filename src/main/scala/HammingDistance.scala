@@ -1,5 +1,5 @@
 import java.math.BigInteger
-import java.nio.file.Files
+import java.nio.file.{Files, Paths}
 import java.util.Random
 
 import org.apache.spark.SparkContext
@@ -12,34 +12,19 @@ object HammingDistance {
 
   def main(args: Array[String]) {
 
-    def bigIntegerLRS(n: BigInt, amount: Int): BigInt = {
-      if (n >= 0) {
-        n >> amount
-      }
-      else {
-        // unset sign bit
-        BigInt("0" + (n >> amount).toString(2).drop(1), 2)
-      }
-    }
 
-    def leftPad(n: Int)(bytes: Array[Byte]): Array[Byte] = {
-      Array.fill[Byte](n - bytes.length)(0.toByte) ++ bytes
-    }
+    val byteArray = Files.readAllBytes(Paths.get(
+      "/home/bill/projects/image-feature-search/indexes/full_index"
+    ))
 
+    val descriptors = byteArray.sliding(4, 4)
 
-    def encode(n: BigInt): BigInt =  n ^ bigIntegerLRS(n, 1)
 
     val ts = Array("000001001010", "000001011101", "000011001100", "000101001010",
     "000101110110", "000101011101", "000101101010", "000111001100").map(BigInt(_, 2))
 
-    val (_, grayOrdered) = ts.map(encode).zip(ts).sortBy(x => x._1).unzip
-
-    val sequences = grayOrdered.map(_.toByteArray).map(leftPad(4)(_))
-
-
-    val fLSSeqs = sequences.map(FLSSeq(_))
-
-    DynamicHAIndex.build(fLSSeqs, 2)
+    val nodes = DynamicHAIndex(descriptors.toList, 3500, 1)
+    println(nodes.length)
     /*
     val vectors = Array(Array())
 
