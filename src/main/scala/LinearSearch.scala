@@ -1,9 +1,5 @@
-import org.apache.spark.rdd._
-import org.apache.spark.SparkContext._
 
-import scala.reflect.ClassTag
-
-class LinearSearch extends Search {
+class LinearSearch {
 
   def numBitsSet(b: Byte): Int = (0 to 7).map(i => (b >>> i) & 1).sum
 
@@ -11,24 +7,24 @@ class LinearSearch extends Search {
     bytes1.zip(bytes2).map { case (b1, b2) => (b1 ^ b2).toByte }.map(numBitsSet).sum
 
   // returns indexes of results
-  override def selectKnn(k: Int)(vector: Array[Byte]): Array[(Long, Int)] = {
+  def selectKnn(k: Int)(vector: Array[Byte]): List[(Int, Int)] = {
 
     val distances = this.indexedTrainingVectors.map {
       case (i, v) =>  i -> computeDistance(vector)(v)
     }
 
-    distances.takeOrdered(k)(Ordering.by[(Long, Int), Int](_._2))
+    distances.sortBy(_._2).take(k)
   }
 
-  override def joinKnn(k: Int)(vectors: RDD[Array[Byte]]): Array[Array[(Long, Int)]] =
-    vectors.collect.map(selectKnn(k)(_))
+  def joinKnn(k: Int)(vectors: List[Array[Byte]]): List[List[(Int, Int)]] =
+    vectors.map(selectKnn(k)(_))
 
-  override def train(vectors: RDD[Array[Byte]]): Search = {
+  def train(vectors: List[Array[Byte]]): LinearSearch = {
     this.trainingVectors = vectors
     this.indexedTrainingVectors = vectors.zipWithIndex.map { case (v, i) => i -> v }
     this
   }
 
-  override var trainingVectors: RDD[Array[Byte]] = _
-  var indexedTrainingVectors: RDD[(Long, Array[Byte])] = _
+  var trainingVectors: List[Array[Byte]] = _
+  var indexedTrainingVectors: List[(Int, Array[Byte])] = _
 }

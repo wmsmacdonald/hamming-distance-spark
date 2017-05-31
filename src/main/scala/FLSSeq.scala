@@ -1,35 +1,10 @@
 import Function.tupled
 
-object FLSSeq {
-
-  def full(sequence: Array[Byte]): FLSSeq =
-    FLSSeq(sequence, Array.fill[Byte](sequence.length)(-1))
-
-  def extract(fLSSeqs: List[FLSSeq]): FLSSeq = {
-    val sequences: List[Array[Byte]] = fLSSeqs.map(_.sequence)
-    val transposed: List[List[Byte]] = sequences.transpose
-    val sequence: Array[Byte] = transposed.map(
-      seq => seq.reduce((b1, b2) => (b1 & b2).toByte)
-    ).toArray
-    if (transposed.head.length == 1) {
-      FLSSeq(sequence, Array.fill[Byte](sequence.length)(-1))
-    }
-    else {
-      val mask: Array[Byte] = transposed.map { seq =>
-        val groups = seq.sliding(2, 1).toList
-        val r = groups.map({ bytes =>
-          (bytes.head ^ bytes(1)).toByte
-        }).reduce((b1, b2) => (b1 | b2).toByte)
-        (~r).toByte
-      }.toArray
-      FLSSeq(sequence, mask)
-    }
-  }
-}
 
 // mask: bit is 0 -> wildcard, bit is 1 -> value defined in sequence
 // bits in sequence covered by mask have no effect
 case class FLSSeq(sequence: Array[Byte], mask: Array[Byte]) {
+  require(sequence.length == mask.length)
 
   override def equals(other: Any): Boolean = {
     val otherFLSSeq = other.asInstanceOf[FLSSeq]
@@ -53,9 +28,19 @@ case class FLSSeq(sequence: Array[Byte], mask: Array[Byte]) {
     FLSSeq(this.sequence, mask)
   }
 
-  def distance(other: FLSSeq): Int =
+  // masks combine, non-masked values are ORed
+  def &(other: FLSSeq): FLSSeq = {
+    val sequence = this.mask.zip(other.mask).map(tupled(_ & _)).map(_.toByte)
+    val mask = this.mask.zip(other.mask).map(tupled(_ & _)).map(_.toByte)
+    FLSSeq(sequence, mask)
+  }
+
+  def distance(other: FLSSeq): Int = {
+    require(this.sequence.length == other.sequence.length)
     this.sequence.zip(other.sequence).map(tupled(_ ^ _)).zip(this.mask)
-      .map(tupled(_ & _)).zip(other.mask).map(tupled(_ & _)).map(Integer.bitCount).sum
+      .map(tupled(_ & _)).zip(other.mask).map(tupled(_ & _)).map(_ & 0xFF)
+      .map(Integer.bitCount).sum
+  }
 
   override def toString: String = {
     val string = byteArrayToString(mask).zip(byteArrayToString(sequence)).map {
@@ -73,3 +58,37 @@ case class FLSSeq(sequence: Array[Byte], mask: Array[Byte]) {
 }
 
 
+object FLSSeq {
+
+  def full(sequence: Array[Byte]): FLSSeq =
+    FLSSeq(sequence, Array.fill[Byte](sequence.length)(-1))
+
+  def full(length: Int): FLSSeq =
+    FLSSeq(Array.fill[Byte](length)(-1), Array.fill[Byte](length)(-1))
+
+  def extract(fLSSeqs: List[FLSSeq]): FLSSeq = {
+    val sequences: List[Array[Byte]] = fLSSeqs.map(_.sequence)
+    val transposedSeq: List[List[Byte]] = sequences.transpose
+    val transposedMask: List[List[Byte]] = fLSSeqs.map(_.mask).transpose
+    val sequence: Array[Byte] = transposedSeq.map(
+      seq => seq.reduce((b1, b2) => (b1 & b2).toByte)
+    ).toArray
+    if (transposedSeq.head.length == 1) {
+      FLSSeq(sequence, Array.fill[Byte](sequence.length)(-1))
+    }
+    else {
+      val minMask = transposedMask.map(
+        bytes => bytes.reduce((b1, b2) => (b1 & b2).toByte)
+      ).toArray
+      val valuesMask: Array[Byte] = transposedSeq.map { seq =>
+        val groups = seq.sliding(2, 1).toList
+        val r = groups.map({ bytes =>
+          (bytes.head ^ bytes(1)).toByte
+        }).reduce((b1, b2) => (b1 | b2).toByte)
+        (~r).toByte
+      }.toArray
+      val mask = minMask.zip(valuesMask).map(tupled(_ & _)).map(_.toByte)
+      FLSSeq(sequence, mask)
+    }
+  }
+}

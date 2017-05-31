@@ -9,6 +9,15 @@ object FLSSeqTest extends TestSuite {
   // 0x0E -> 00001110, 0xFB -> 11111011
   val f5 = new FLSSeq(Array(1.toByte, 0x0E.toByte), Array(1.toByte, 0xFE.toByte))
 
+  // 0xEB -> 1110 1011, 0xBF -> 1011 1111
+  val fs1 = FLSSeq(Array(0xEB.toByte), Array(0xBF.toByte))
+  // 0xEB -> 1110 1011, 0xB1 -> 1011 0001
+  val fs2 = FLSSeq(Array(0xEB.toByte), Array(0xB1.toByte))
+  // 0xEB -> 1110 1011, 0xFF -> 1111 1111
+  val fs3 = FLSSeq(Array(0xEB.toByte), Array(0xFF.toByte))
+  // 0xEF -> 1110 1111, 0x3F -> 0011 1111
+  val fs4 = FLSSeq(Array(0xEF.toByte), Array(0x3F.toByte))
+
   val tests: Tree[Test] = this {
     'equals {
       assert(f1 == f1)
@@ -32,12 +41,6 @@ object FLSSeqTest extends TestSuite {
       assert(f1.notEmpty)
     }
     '- {
-      // 0xEB -> 1110 1011, 0xBF -> 1011 1111
-      val fs1 = FLSSeq(Array(0xEB.toByte), Array(0xBF.toByte))
-      // 0xB1 ->
-      val fs2 = FLSSeq(Array(0xEB.toByte), Array(0xB1.toByte))
-      val fs3 = FLSSeq(Array(0xEB.toByte), Array(0xFF.toByte))
-
       val expected1 = FLSSeq(Array(0xEB.toByte), Array(0x0E.toByte))
       val expected2 = FLSSeq(Array(0xEB.toByte), Array(0x4E.toByte))
 
@@ -47,14 +50,23 @@ object FLSSeqTest extends TestSuite {
       assert(expected1 == result1)
       assert(expected2 == result2)
     }
+    '& {
+      val expected1 = FLSSeq(Array(0xFF.toByte), Array(0x31.toByte))
+
+      val r1 = fs2 & fs4
+
+      assert(expected1 == r1)
+    }
     'distance {
       val result1 = f1.distance(f2)
       val result2 = f1.distance(f4)
       val result3 = f1.distance(f5)
+      val result4 = f5.distance(f1)
 
       assert(result1 == 0)
       assert(result2 == 1)
       assert(result3 == 1)
+      assert(result4 == 1)
     }
   }
 }

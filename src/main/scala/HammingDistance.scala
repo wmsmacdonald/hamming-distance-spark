@@ -17,41 +17,46 @@ object HammingDistance {
     val namesFile = "/home/bill/projects/image-feature-search/indexes/values"
 
     val fullDescriptors = Files.readAllBytes(Paths.get(fullDescriptorsFile))
-      .sliding(32, 32).toList
+      .sliding(16, 16).toList
     val queryDescriptors = Files.readAllBytes(Paths.get(queryDescriptorsFile))
-      .sliding(32, 32).toList
+      .sliding(16, 16).toList
 
     val (names, lastIndexes): (List[String], List[String]) = scala.io.Source.fromFile(namesFile).getLines()
-      .map(_.split(",")).toList.map { x => (x(0), x(1))}.unzip
+      .map(_.split(",")).toList.map { x => (x(0), x(1)) }.unzip
 
     val namesArr = names.toArray
 
     val partitions = Partitioned(lastIndexes.map(_.toInt))
-    val files: List[String] = fullDescriptors.indices.map(x => {
-      namesArr(Partitioned.getItemNum(partitions)(x).get)
-    }).toList
+/*
+    val ls = new LinearSearch()
+    ls.train(fullDescriptors)
+    val result = ls.selectKnn(1)(queryDescriptors.head).head
+    val file = names(Partitioned.getItemNum(partitions)(result._1).get)
+    println(file, result._2)
 
+    */
 
     val ts = Array("000001001010", "000001011101", "000011001100", "000101001010",
     "000101110110", "000101011101", "000101101010", "000111001100").map(BigInt(_, 2))
 
-    val nodes = DynamicHAIndex(fullDescriptors, files, 0.02, 3)
+    val queryFLSSeq = FLSSeq.full(queryDescriptors.head)
+
+    val nodes = DynamicHAIndex(fullDescriptors, fullDescriptors.indices.toList, 50, 4)
+    println("done indexing")
     val t0 = System.nanoTime()
+    val results =  queryDescriptors.slice(0,1).map(d =>
+      DynamicHAIndex.knn(nodes, threshold = 11, k = 1, d)
+    )
+    println(results)
 
-    val results = queryDescriptors.map(desc => DynamicHAIndex.knn(nodes, 50, 2, desc))
-    print(results)
+    println(s"nodes searched ${DynamicHAIndex.nodesSearched}")
+
+    val sorted = results.flatten.groupBy(_._1).map {
+      p => (names(
+        Partitioned.getItemNum(partitions)(p._1.asInstanceOf[Int]).get
+      ), p._2.length)
+    }
+    print(sorted)
     println("Time: " + ((System.nanoTime() - t0) / 1e9)  + " s")
-    /*
-    val vectors = Array(Array())
-
-    val grayCodes: RDD[BigInt] = descriptors.map(bytes => encode(BigInt(bytes)))
-
-    val sortedDescriptors: RDD[Array[Byte]] =
-      descriptors.zip(grayCodes).sortBy(el => el._2).keys
-
-    val strings: RDD[String] = sortedDescriptors.map(a => BigInt(a).toString(2))
-    */
-
   }
-
 }
